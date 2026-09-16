@@ -1,0 +1,197 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Kunden & Fahrzeuge
+// ---------------------------------------------------------------------------
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  email     String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  vehicles Vehicle[]
+  orders   Order[]
+}
+
+model Vehicle {
+  id           String   @id @default(cuid())
+  customerId   String
+  make         String
+  model        String
+  licensePlate String?
+  color        String?
+  vehicleType  VehicleType @default(PKW)
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  orders   Order[]
+
+  @@index([customerId])
+}
+
+enum VehicleType {
+  PKW
+  SUV
+  TRANSPORTER
+  WOHNMOBIL
+  MOTORRAD
+  SONSTIGES
+}
+
+// ---------------------------------------------------------------------------
+// Leistungskatalog & Checklisten-Vorlagen
+// ---------------------------------------------------------------------------
+
+enum ServiceCategory {
+  AUSSEN
+  INNEN
+  POLITUR
+  VERSIEGELUNG
+  KOMPLETT
+  SONDERLEISTUNG
+}
+
+model ServiceTemplate {
+  id                String          @id @default(cuid())
+  name              String
+  description       String?
+  category          ServiceCategory @default(SONDERLEISTUNG)
+  basePrice          Float
+  estimatedMinutes  Int
+  active            Boolean         @default(true)
+  sortOrder         Int             @default(0)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  checklistItems    ChecklistTemplateItem[]
+  orderServices     OrderService[]
+}
+
+model ChecklistTemplateItem {
+  id                String   @id @default(cuid())
+  serviceTemplateId String
+  label             String
+  sortOrder         Int      @default(0)
+  createdAt         DateTime @default(now())
+
+  serviceTemplate ServiceTemplate @relation(fields: [serviceTemplateId], references: [id], onDelete: Cascade)
+
+  @@index([serviceTemplateId])
+}
+
+// ---------------------------------------------------------------------------
+// Aufträge
+// ---------------------------------------------------------------------------
+
+enum OrderStatus {
+  ANFRAGE
+  GEPLANT
+  IN_ARBEIT
+  QUALITAETSKONTROLLE
+  FERTIG
+  ABGEHOLT
+  STORNIERT
+}
+
+model Order {
+  id            String      @id @default(cuid())
+  customerId    String
+  vehicleId     String
+  status        OrderStatus @default(ANFRAGE)
+  scheduledAt   DateTime?
+  dueAt         DateTime?
+  completedAt   DateTime?
+  pickedUpAt    DateTime?
+  discountPct   Float       @default(0)
+  notes         String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  customer      Customer      @relation(fields: [customerId], references: [id])
+  vehicle       Vehicle       @relation(fields: [vehicleId], references: [id])
+  services      OrderService[]
+  photos        Photo[]
+  statusEvents  OrderStatusEvent[]
+
+  @@index([customerId])
+  @@index([vehicleId])
+  @@index([status])
+  @@index([scheduledAt])
+}
+
+model OrderStatusEvent {
+  id        String      @id @default(cuid())
+  orderId   String
+  status    OrderStatus
+  createdAt DateTime    @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+// Leistung, die innerhalb eines Auftrags gebucht wurde (Preis zum Zeitpunkt
+// der Buchung eingefroren, da sich der Katalogpreis später ändern kann).
+model OrderService {
+  id                String   @id @default(cuid())
+  orderId           String
+  serviceTemplateId String
+  nameSnapshot      String
+  price             Float
+  sortOrder         Int      @default(0)
+  createdAt         DateTime @default(now())
+
+  order           Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  serviceTemplate ServiceTemplate @relation(fields: [serviceTemplateId], references: [id])
+  checklistItems  ChecklistItem[]
+
+  @@index([orderId])
+}
+
+model ChecklistItem {
+  id             String    @id @default(cuid())
+  orderServiceId String
+  label          String
+  sortOrder      Int       @default(0)
+  checked        Boolean   @default(false)
+  checkedAt      DateTime?
+  note           String?
+
+  orderService OrderService @relation(fields: [orderServiceId], references: [id], onDelete: Cascade)
+
+  @@index([orderServiceId])
+}
+
+// ---------------------------------------------------------------------------
+// Vorher-/Nachher-Fotos
+// ---------------------------------------------------------------------------
+
+enum PhotoType {
+  VORHER
+  NACHHER
+}
+
+model Photo {
+  id        String    @id @default(cuid())
+  orderId   String
+  type      PhotoType
+  dataUrl   String
+  note      String?
+  createdAt DateTime  @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
